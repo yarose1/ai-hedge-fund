@@ -74,3 +74,22 @@ def test_all_abstain_yields_flat_book():
     result = blend_signals(signals, {"a": 1.0, "b": 1.0}, gross_target=1.0)
     assert result.convictions == {"AAPL": 0.0}
     assert result.weights == {"AAPL": 0.0}
+def test_market_neutral_excludes_abstained_only_ticker():
+    signals = [
+        _sig("a", "AAPL", -0.032),
+        _sig("a", "MSFT", 0.300),
+        _sig("a", "NVDA", 0.0, abstained=True),
+    ]
+
+    result = blend_signals(
+        signals,
+        {"a": 1.0},
+        gross_target=1.0,
+        market_neutral=True,
+    )
+
+    assert result.convictions["NVDA"] == pytest.approx(0.0)
+    assert result.weights["NVDA"] == pytest.approx(0.0)
+    assert result.weights["AAPL"] < 0
+    assert result.weights["MSFT"] > 0
+    assert sum(result.weights.values()) == pytest.approx(0.0)
