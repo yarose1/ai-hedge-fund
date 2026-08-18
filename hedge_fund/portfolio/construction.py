@@ -73,17 +73,23 @@ def blend_signals(
         for t in tickers
     }
 
-    scaled = convictions
-    if market_neutral and tickers:
-        mean = sum(convictions.values()) / len(convictions)
-        scaled = {t: c - mean for t, c in convictions.items()}
+    # Only tickers with at least one non-abstained vote are eligible
+    # for portfolio allocation. Abstained-only tickers remain visible
+    # in convictions for auditing, but must receive a zero weight.
+    eligible_tickers = [t for t in tickers if weight_total.get(t)]
+
+    scaled = {t: convictions[t] for t in eligible_tickers}
+    if market_neutral and eligible_tickers:
+        mean = sum(scaled.values()) / len(scaled)
+        scaled = {t: c - mean for t, c in scaled.items()}
 
     # Threshold, not == 0: demeaning identical convictions leaves ~1e-16
     # residue, and dividing by it would normalize noise into a full book.
     gross = sum(abs(c) for c in scaled.values())
-    if gross < 1e-9:
-        weights = {t: 0.0 for t in tickers}
-    else:
-        weights = {t: c / gross * gross_target for t, c in scaled.items()}
+    weights = {t: 0.0 for t in tickers}
+    if gross >= 1e-9:
+        weights.update(
+            {t: c / gross * gross_target for t, c in scaled.items()}
+        )
 
     return BlendResult(convictions=convictions, weights=weights)
