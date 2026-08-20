@@ -20,6 +20,11 @@ from hedge_fund.data.models import (
 
 logger = logging.getLogger(__name__)
 
+def _openbb_historical(**kwargs):
+    """Fetch historical prices through OpenBB."""
+    from openbb import obb
+
+    return obb.equity.price.historical(**kwargs)
 
 class FDClientError(Exception):
     """An API request failed for infrastructure reasons (auth, rate limit,
@@ -81,15 +86,33 @@ class FDClient:
         interval: str = "day",
         interval_multiplier: int = 1,
     ) -> list[Price]:
-        """Fetch OHLC price bars."""
-        data = self._get("/prices/", {
-            "ticker": ticker,
-            "interval": interval,
-            "interval_multiplier": interval_multiplier,
-            "start_date": start_date,
-            "end_date": end_date,
-        }, response_key="prices")
-        return [Price(**row) for row in data] if data else []
+        """Fetch OHLC price bars from OpenBB using Yahoo Finance."""
+
+
+        result = _openbb_historical(
+            symbol=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            interval="1d",
+            provider="yfinance",
+        )
+
+        df = result.to_df()
+
+        prices: list[Price] = []
+        for index, row in df.iterrows():
+            prices.append(
+                Price(
+                    open=float(row["open"]),
+                    close=float(row["close"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    volume=int(row["volume"]),
+                    time=str(index.date() if hasattr(index, "date") else index),
+                )
+            )
+
+        return prices
 
     # ------------------------------------------------------------------
     # Financial Metrics
